@@ -329,6 +329,335 @@ You just completed a series of steps with Docker. The following diagram summariz
 
 You copied the code base into a directory, which acted as your build area [a]. You also created a Dockerfile that provided instructions for how to create a Docker image. That Dockerfile specified a FROM instruction that identified a starter image to use. You then ran the docker build command [b]. Docker read the Dockerfile and requested the starter image from an image repository [c]. The image repository returned the starter image file [d]. The docker build command then finished building the image according to the instructions in the Dockerfile, which resulted in the Docker image [e]. Finally, you ran the docker run command [f] to run a Docker container [g].
 
+<h3>Analyze the database connection issue.</h3>
+In the coffee suppliers application, choose List of suppliers. You see an error stating that there was a problem retrieving the list of suppliers.
+
+<img width="819" alt="image" src="https://github.com/user-attachments/assets/b63d63ab-2b63-4528-8d66-4b11ea34503f" />
+
+ <h3>Analysis:</h3>
+ This is because the node_app_1 container is having trouble reaching the MySQL database, which is running on the EC2 instance named MysqlServerNode. Return to the VS Code IDE browser tab.
+ Open the config.js file in the containers/node_app/codebase_partner/app/config/ directory. The top of the file contains the following code:
+
+ <img width="937" alt="image" src="https://github.com/user-attachments/assets/2748c6d1-1082-4c76-9536-53dfd14346e1" />
+
+ <h3>Analysis:<h3>
+The application code checks for an environmental variable to learn how to connect to the MySQL database. As you see in the code, the settings include a hardcoded IP address for the location of the MySQL database host. However, the application code also contains the following logic:
+
+      Object.keys(config).forEach(key => {
+      if(process.env[key] === undefined){
+        console.log(`[NOTICE] Value for key '${key}' not found in ENV, using default value.  See app/config/config.js`)
+      } else {
+        config[key] = process.env[key]
+      }
+    });
+    
+    module.exports = config; 
+
+This checks for the existence of an environmental variable. If one is found, that value overrides the placeholder (hardcoded) APP_DB_HOST address. When you visited the web application earlier—the version that was directly installed on the EC2 instance guest OS—the node instance passed an environment variable (the IPv4 address of the MysqlServerNode EC2 instance) to the application. However, you did not launch your node_app_1 container with that environment variable. Therefore, the node application defaulted to the hardcoded 3.82.161.206 IP address, which does not match the IP address of the MySQL instance.
+
+Establish a terminal connection to the container to observe the settings. To find the container ID, run the following command:
+          
+          docker ps
+
+<img width="741" alt="image" src="https://github.com/user-attachments/assets/64ed2eea-3d8a-42a4-84b6-284c898fad95" />
+
+To connect your terminal to the container, run the following commands, one at a time. Replace <container-id> with the actual container ID value that you just retrieved: 
+
+    docker exec -ti <container-id> sh
+    whoami
+    
+<img width="782" alt="image" src="https://github.com/user-attachments/assets/78dd1cb7-d86d-48e9-a08e-e0f20bc61a60" />
+
+Your terminal is now connected to the container as the root user.
+
+To observe the environment variables that are present in the node user's environment, run the following commands:
+      
+      su node
+      env
+ Notice that the APP_DB_HOST variable is not present.
+
+ <img width="820" alt="image" src="https://github.com/user-attachments/assets/5c7a8448-e6d5-4e7d-a728-e85d886275ae" />
+
+To disconnect from the container, run the following commands:
+      
+      exit
+      exit
+
+The first exit command makes you the root user again. The second command disconnects you from the container. 
+
+Stop and remove the container that has the database connectivity issue. To get the ID of the running container, run the following command:
+
+    docker ps
+<img width="717" alt="image" src="https://github.com/user-attachments/assets/2bff32f0-b9f5-4bd1-8121-e0995ffa5a0d" />
+
+Notice the name of the application that is returned in the NAMES column. To stop and remove the container, run the following command:
+       
+       docker stop node_app_1 && docker rm node_app_1
+      
+To verify that the application is no longer running, run the following curl command:
+      
+      curl http://localhost:3000
+
+The output indicates a failure to connect to the application (Connection refused).
+
+ Tip: If you refresh the web application in the browser (the version that is running as a container on the VS Code IDE), you will find that the application no longer loads.
+
+ <h3>Launch a new container. </h3>
+
+This time, you will pass an environment variable to tell the node application the correct location of the database.
+   
+• Return to the EC2 console, and copy the Public IPv4 address value of the MysqlServerNode EC2 instance.
+      
+• Return to the VS Code IDE Bash terminal.
+      
+• To run the application in a container and pass an environment variable to specify the database location, run the following command. Replace <ip-address> with the actual public IPv4 address of the MysqlServerNode EC2 instance
+
+    docker run -d --name node_app_1 -p 3000:3000 -e APP_DB_HOST="3.94.253.183 " node_app
+    
+ <img width="959" alt="image" src="https://github.com/user-attachments/assets/b3cf35ac-0fa7-42d3-ab32-ed3344a887de" />
+
+ When you pass in the network location of the database as an environment variable, you give the node application the information that it needs to establish network connectivity to the database, as illustrated in the following diagram: 
+
+ <img width="383" alt="image" src="https://github.com/user-attachments/assets/15121aff-05a1-4936-93b9-b42eebaa66b8" />
+
+ Optional: To check the environment variables of the new container, run the docker exec command, which you used previously. The container now has an APP_DB_HOST variable.
+
+ <img width="806" alt="image" src="https://github.com/user-attachments/assets/0e8a6543-c38d-42ef-aa54-92d96f5f4b3c" />
+
+ Verify that the database connection is now working. Try to access the web application again.
+           
+▪ If you still have the page open, refresh the browser tab. Otherwise, to navigate to the application in a new browser tab, go to http://<LabIDE-public-ip>:3000 (replace <LabIDE-public-ip> with the actual public IPv4 address of your VS Code IDE).
+   
+◦ The application is working. Choose List of suppliers to go to the http://<LabIDE-public-ip>:3000/suppliers page.
+        
+◦ The page displays the supplier entry that you created earlier. This indicates that your container is connecting to the MysqlServerNode EC2 instance where that data is stored.
+          
+Congratulations! You have successfully migrated the node application to a container. Also, the application container (node-app_1) is now able to successfully establish a network connection with the MySQL database, which is still running on an EC2 instance.
+
+<h2>Task 4: Migrating the MySQL database to a Docker container</h2>
+
+In this task, you will work to migrate the MySQL database to a container as well. To accomplish this task, you will dump the latest data that is stored in the database and use that to seed a new MySQL database running in a new Docker container. The following diagram shows the migration that you will accomplish in this task:
+
+<img width="417" alt="image" src="https://github.com/user-attachments/assets/402a1a5f-3dda-4997-903d-6e85686b74f6" />
+
+Create a mysqldump file from the data that is currently in the MySQL database.
+    
+• Return to the VS Code IDE, and close any file tabs that are open in the text editor.
+      
+• Choose File > New File and then paste the following code into the new file:
+
+    mysqldump -P 3306 -h  <mysql-host-ip-address> -u nodeapp -p --databases COFFEE > ../../my_sql.sql
+
+Next, go to the EC2 console and copy the Public IPv4 address value of the MysqlServerNode instance.
+
+• Return to the text file in VS Code IDE and replace <mysql-host-ip-address> in the code with the IP address that you copied.
+    
+• In the terminal, to ensure that you are in the correct directory, run the following command:
+      
+      cd /home/ec2-user/environment/containers/node_app/codebase_partner
+
+Finally, copy the command that you created in the text editor into the terminal and run the command. Your command will look similar to the following example, but your IP address will be different:
+
+      mysqldump -P 3306 -h 100.27.45.2 -u nodeapp -p --databases COFFEE > ../../my_sql.s
+
+• The mysqldump utility prompts you for a password. Enter the following password: coffee 
+
+If successful, the terminal does not show any output. However, in the left navigation panel, notice that the  file now appears in the containers directory.
+
+Tip: To see the new file, you might need to choose the settings icon in the upper-right corner of the file tree panel and then choose Refresh File Tree.
+
+<img width="956" alt="image" src="https://github.com/user-attachments/assets/05f03333-bb73-4e03-af65-6879702d9009" />
+
+Open the mysqldump file and observe the contents.
+
+◦ Open the my_sql.sql file in the VS Code IDE editor
+          
+◦ Scroll through the contents of the file.
+
+    /*!999999\- enable the sandbox mode */ 
+    -- MariaDB dump 10.19  Distrib 10.5.25-MariaDB, for Linux (x86_64)
+    --
+    -- Host: 3.94.253.183    Database: COFFEE
+    -- ------------------------------------------------------
+    -- Server version 8.0.41-0ubuntu0.20.04.1
+    
+    /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+    /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+    /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+    /*!40101 SET NAMES utf8mb4 */;
+    /*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+    /*!40103 SET TIME_ZONE='+00:00' */;
+    /*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+    /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+    /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+    /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+    
+    --
+    -- Current Database: `COFFEE`
+    --
+    
+    CREATE DATABASE /*!32312 IF NOT EXISTS*/ `COFFEE` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+    
+    USE `COFFEE`;
+    
+    --
+    -- Table structure for table `suppliers`
+    --
+    
+    DROP TABLE IF EXISTS `suppliers`;
+    /*!40101 SET @saved_cs_client     = @@character_set_client */;
+    /*!40101 SET character_set_client = utf8 */;
+    CREATE TABLE `suppliers` (
+      `id` int NOT NULL AUTO_INCREMENT,
+      `name` varchar(255) NOT NULL,
+      `address` varchar(255) NOT NULL,
+      `city` varchar(255) NOT NULL,
+      `state` varchar(255) NOT NULL,
+      `email` varchar(255) NOT NULL,
+      `phone` varchar(100) NOT NULL,
+      PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+    /*!40101 SET character_set_client = @saved_cs_client */;
+    
+    --
+    -- Dumping data for table `suppliers`
+    --
+    
+    LOCK TABLES `suppliers` WRITE;
+    /*!40000 ALTER TABLE `suppliers` DISABLE KEYS */;
+    INSERT INTO `suppliers` VALUES (1,'Nikki Wolf','100 Main Street','Anytown','CA','nwolf@example.com','4155558212');
+    /*!40000 ALTER TABLE `suppliers` ENABLE KEYS */;
+    UNLOCK TABLES;
+    /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+    
+    /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+    /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+    /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+    /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+    /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+    /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+    /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+    
+    -- Dump completed on 2025-02-04 19:20:24
+
+ <ol>
+<li>Notice that it will create a database named COFFEE and a table named suppliers.</li>
+<li>Also, because you added a record using the application web interface earlier in this lab, the</li> script inserts that record into the suppliers table.</li>
+<li>Make a small change to one of the values in the file.</li>
+<li>Locate the line that starts with INSERT INTO. It will appear around line 51.</li>
+<li>Modify the address that you entered. For example, if the address has a street named Main change it to Container. Note: This change will help you later in the lab when you want to confirm that you are connected to the new database running on a container, and not the old database.</li>
+<li>Choose File > Save to the change.</li>
+</ol>
+
+In the terminal, to create a directory to store your mysql container code and navigate into the directory, run the following commands:
+      
+       cd /home/ec2-user/environment/containers
+       mkdir mysql
+       cd mysql
+       
+<h3>Create a Dockerfile.</h3>
+To create a new Dockerfile, run the following command:
+      
+    • touch Dockerfile
+
+To move the sqldump file into the new mysql directory, run the following command: 
+
+    mv ../my_sql.sql .
+
+Open the empty Dockerfile (in containers/mysql/) and then copy and paste the following code into the file: 
+
+    FROM mysql:8.0.23
+    COPY ./my_sql.sql /
+    EXPOSE 3306
+
+<img width="583" alt="image" src="https://github.com/user-attachments/assets/7d61b44e-3702-4f39-916e-3a9cbf1dec02" />
+
+Save the changes. 
+
+<h3>Analysis: </h3>
+
+This Dockerfile code specifies that a new Docker image should be created by starting with an existing mysql Docker image. Then, the sqldump file, which you created in a previous step, is copied to the container. The code also specifies that the container should allow network traffic on TCP port 3306, which is the standard MySQL port for network communication. 
+
+Attempt to free up some disk space on the VS Code IDE instance by removing unneeded files. Run the following command:
+    
+      docker rmi -f $(docker image ls -a -q)
+
+Note: You can safely ignore any Error response from daemon messages that display. Finally, run the following command:
+
+      sudo docker image prune -f && sudo docker container prune -f
+     
+ Note: In some cases, the total reclaimed space might be zero; however, you might see that some unneeded containers were deleted.
+
+ <img width="781" alt="image" src="https://github.com/user-attachments/assets/120ffebd-33bf-4b5a-af6f-5a2dba94f58a" />
+
+ To build an image from the Dockerfile, run the following command: 
+ 
+    docker build --tag mysql_server .
+
+<img width="694" alt="image" src="https://github.com/user-attachments/assets/84ae5cbf-241d-4718-8350-b4b9ccaa23b8" />
+
+Verify that the Docker image was created.
+
+• To list the Docker images that your Docker client is aware of, run the following command:
+     
+      docker images
+• The output is similar to the following:
+
+<img width="758" alt="image" src="https://github.com/user-attachments/assets/0e9fb02f-a5aa-4289-b105-784c3ead28f8" />
+
+Notice the mysql_server line item, which was created only a few minutes ago 
+Create and run a Docker container based on the Docker image. To create and run a Docker container from the image, run the following command:
+
+    docker run --name mysql_1 -p 3306:3306 -e MYSQL_ROOT_PASSWORD=rootpw -d mysql_server
+
+<img width="913" alt="image" src="https://github.com/user-attachments/assets/616a519f-5b2b-43c6-879d-91a69501d980" />
+
+Analysis: This command launches a container with the name mysql_1, using the mysql_server image that you created as the template. The -e parameter passes an environment variable.
+   
+ • The terminal returns the container ID for the container.
+    
+• To view the Docker containers that are currently running on the host, run the following command:
+
+     docker container ls
+
+<img width="868" alt="image" src="https://github.com/user-attachments/assets/096a75e3-db9f-4096-a49a-d084883218ac" />
+
+Two containers are now running. One hosts the node application, and the other hosts the MySQL database.  Note the CONTAINER ID  (a83ce12870c0) of the mysql_1, you will need this later.
+docker inspect  a83ce12870c0
+
+Import the data into the MySQL database and define a database user.  Run the following command:
+      
+⚠️ Note that space is not included between -p and rootpw in the command.
+
+    
+    sed -i '1d' my_sql.sql
+    docker exec -i mysql_1 mysql -u root -prootpw < my_sql.sql
+
+Ignore the warning about using a password on the command line interface being insecure.
+    
+To create a database user for the node application to use, run the following command:
+
+    docker exec -i mysql_1 mysql -u root  -prootpw -e "CREATE USER 'nodeapp' IDENTIFIED WITH mysql_native_password BY 'coffee'; GRANT all privileges on *.* to 'nodeapp'@'%';"
+
+
+
+
+
+
+      
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
