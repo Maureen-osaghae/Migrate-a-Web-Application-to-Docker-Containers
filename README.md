@@ -639,6 +639,125 @@ To create a database user for the node application to use, run the following com
 
     docker exec -i mysql_1 mysql -u root  -prootpw -e "CREATE USER 'nodeapp' IDENTIFIED WITH mysql_native_password BY 'coffee'; GRANT all privileges on *.* to 'nodeapp'@'%';"
 
+ <h2>Task 5: Testing the MySQL container with the node application</h2>
+
+ Recall that in a previous task you connected to the node application running in the container, but it was connected to the MySQL database that was running on the MysqlServerNode EC2 instance.
+In this task, you will update the node application running in the container to point to the MySQL database running in the container. The following diagram shows the migration that you will accomplish in this task:
+
+<img width="437" alt="image" src="https://github.com/user-attachments/assets/e5061306-42b9-4b98-8682-69f83fbf5f0e" />
+
+To stop and remove the node application server container, run the following command:
+      
+       docker stop node_app_1 && docker rm node_app_1
+
+Discover the network connectivity information. To find the IPv4 address of the mysql_1 container on the network, run the following command:
+     
+      docker inspect <CONTAINER ID>
+      
+The following example output shows only a portion of the output:
+
+<img width="227" alt="image" src="https://github.com/user-attachments/assets/4b4b4a8e-8cae-45ba-9c7b-caff9fee8f82" />
+
+<h3>Start a new node application Docker container</h3>
+      In this step, you run the Docker command to start a new container from the node_app Docker image. However, this time you pass the APP_DB_HOST environment variable to the container environment. Run the following command. Replace <ip-address> with the actual IPv4 address value that you just discovered. You do not need to surround the IP address in quotes.
+
+    docker run -d --name node_app_1 -p 3000:3000 -e APP_DB_HOST=172.17.0.3 node_app
+
+The container starts as it did previously. 
+
+<img width="751" alt="image" src="https://github.com/user-attachments/assets/383a28c3-b579-43c3-96e2-8e4303eecce6" />
+
+To verify that both containers are running again, run the following command:
+      
+       docker ps
+  <img width="683" alt="image" src="https://github.com/user-attachments/assets/0418273f-a4f6-48a9-93ca-5f299d84e968" />
+
+  <h4>Test the application.</h4>
+  
+  ◦  Open the web application that is running as a container on the VS Code IDE. The address for the web application is: http://<LabIDE-public-ip-address>:3000
+       
+  ◦  In the coffee suppliers application, choose List of suppliers to verify that the database is connected. If you see the supplier entry that you created previously, and the entry contains the change that you made to the street name (for example, Container Street), then that is confirmation that you have successfully connected the node_app running in the container to the database running in the other container.
+
+<img width="931" alt="image" src="https://github.com/user-attachments/assets/358f6987-bf73-4ae0-8972-dee49e8635bd" />
+
+One of the important benefits of running an application on containers is the portability and scalability that doing so provides. Sofía has now proven that she can launch functional containers from each of the two Docker images that she created, she is ready to move this solution into production.
+
+<h2>Task 6: Adding the Docker images to Amazon ECR</h2>
+
+In this final task in the lab, you will add the Docker images that you created to an Amazon Elastic Container Registry (Amazon ECR) repository.  Authorize your Docker client to connect to the Amazon ECR service.
+<ol>
+<li>Discover your AWS account ID.</li>
+<li>Copy the My Account value from the menu. This is your AWS account ID.</li>
+<li>Next, return to the VS Code IDE Bash terminal.</li>
+<li>To authorize your VS Code IDE Docker client, run the following command. Replace <account-id> with the actual account ID that you just found:</li>
+</ol>
+
+    aws ecr get-login-password \
+    --region us-east-1 | docker login --username AWS \
+    --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+
+ <img width="629" alt="image" src="https://github.com/user-attachments/assets/afdb598c-54c7-4bdb-a413-5dc4f62ed23a" />
+
+ To create the repository, run the following command:
+
+    aws ecr create-repository --repository-name node-app
+
+The response data is in JSON format and includes a repositoryArn value. This is the URI that you would use to reference your image for future deployments.
+The response also includes a registryId, which you will use in a moment.
+
+<img width="525" alt="image" src="https://github.com/user-attachments/assets/74867b81-6779-44f9-8543-92f107933ca9" />
+
+<h3>Tag the Docker image.</h3>
+In this step, you will tag the image with your unique registryId value to make it easier to manage and keep track of this image.
+
+Run the following command. Replace <registry-id> with your actual registry ID number.
+
+    docker tag node_app:latest <registry-id>.dkr.ecr.us-east-1.amazonaws.com/node-app:latest
+
+To verify that the tag was applied, run the following command:
+     
+      docker images
+      
+This time, notice that the latest tag was applied and the image name includes the remote repository name where you intend to store it. The following image provides an example of the output:
+
+<img width="896" alt="image" src="https://github.com/user-attachments/assets/9124672e-3c7c-4430-8280-d1d9abefaf2c" />
+
+Push the Docker image to the Amazon ECR repository.  To push your image to Amazon ECR, run the following command. Replace <registry-id> with your actual registry ID number:
+      
+      docker push <registry-id>.dkr.ecr.us-east-1.amazonaws.com/node-app:latest
+      
+The output is similar to the following:
+
+<img width="672" alt="image" src="https://github.com/user-attachments/assets/367d0e40-7965-4d52-b18a-7204f476dbdc" />
+
+To confirm that the node-app image is now stored in Amazon ECR, run the following aws ecr list-images command: 
+
+    aws ecr list-images --repository-name node-app
+
+ <img width="636" alt="image" src="https://github.com/user-attachments/assets/4bcecb84-c3c2-4b49-acd2-35a5de55f56e" />
+
+ <h2>Update from the café</h2>
+
+Sofía is satisfied that she has made progress. She successfully containerized the web application from the coffee supplier company that the café owners purchased. The application had previously been installed directly on the guest OS of an EC2 instance. 
+
+Now the application is containerized, and she has more flexibility to deploy the application and scale it cost effectively.
+She also successfully containerized the backend database that the application uses. Finally, she was able to successfully register the Docker image in Amazon ECR to launch the coffee supplier application in the future.
+In the next lab, Sofía will use the Docker image that she just stored in Amazon ECR to deploy the coffee supplier application using AWS Elastic Beanstalk. Although Sofía also containerized the MySQL database, she has decided not to push that image to Amazon ECR. She spoke with one of the AWS consultants who came in for coffee today, and the consultant convinced her that it makes more sense to use the Amazon Relational Database Service (Amazon RDS) service to host the coffee supplier database, instead of hosting it on a container. The next lab will discuss the reasons for this, but for now Sofía is quite content that she was able to containerize the coffee supplier application. She looks forward to deploying it in the next lab!
+
+
+© 2024 Amazon Web Services, Inc. and its affiliates. All rights reserved. This work may not be reproduced or redistributed, in whole or in part, without prior written permission from Amazon Web Services, Inc. Commercial copying, lending, or selling is prohibited. 
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
